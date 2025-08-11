@@ -48,3 +48,24 @@ FROM cf_reports r
 WHERE r.entity_id = 100035
 ORDER BY r.rpt_file_date DESC
 LIMIT 10;
+
+-- Update the entity summary to calculate total raised from donations, not transactions
+-- This gives the TRUE total raised amount
+UPDATE cf_entities e
+SET 
+    total_income_all_records = COALESCE((
+        SELECT SUM(d.donation_amt) 
+        FROM cf_donations d 
+        WHERE d.entity_id = e.entity_id
+    ), 0)
+WHERE e.entity_id = 100035;
+
+-- Verify entity totals
+SELECT 
+    entity_id,
+    primary_candidate_name,
+    total_income_all_records as total_raised_from_donations,
+    (SELECT COUNT(*) FROM cf_donations WHERE entity_id = 100035) as total_donation_count,
+    (SELECT SUM(donation_amt) FROM cf_donations WHERE entity_id = 100035) as calculated_total_raised
+FROM cf_entities
+WHERE entity_id = 100035;
