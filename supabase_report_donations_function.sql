@@ -7,6 +7,7 @@ RETURNS TABLE (
     donation_id bigint,
     report_id int,
     entity_id int,
+    record_id int,
     donation_date date,
     amount numeric,
     donor_name text,
@@ -21,7 +22,10 @@ RETURNS TABLE (
     state text,
     zip text,
     country text,
-    is_individual boolean
+    is_individual boolean,
+    cycle_to_date_amt numeric,
+    is_pac boolean,
+    is_corporate boolean
 ) 
 LANGUAGE plpgsql
 STABLE
@@ -33,12 +37,13 @@ BEGIN
         d.donation_id::bigint,
         d.report_id::int,
         d.entity_id::int,
+        d.record_id::int,
         d.donation_date,
         d.donation_amt as amount,
         COALESCE(d.donor_name, '')::text,
-        COALESCE(d.donor_fname, '')::text as donor_first_name,
-        COALESCE(d.donor_lname, '')::text as donor_last_name,
-        COALESCE(d.donor_org, '')::text as donor_organization,
+        ''::text as donor_first_name,  -- Column doesn't exist in table
+        ''::text as donor_last_name,   -- Column doesn't exist in table
+        ''::text as donor_organization, -- Column doesn't exist in table
         COALESCE(d.donation_type, 'Unknown')::text as donor_type,
         COALESCE(d.donor_occupation, '')::text as occupation,
         COALESCE(d.donor_employer, '')::text as employer,
@@ -46,8 +51,11 @@ BEGIN
         COALESCE(d.donor_city, '')::text as city,
         COALESCE(d.donor_state, '')::text as state,
         COALESCE(d.donor_zip, '')::text as zip,
-        COALESCE(d.donor_country, '')::text as country,
-        COALESCE(d.is_individual, false)::boolean
+        ''::text as country,  -- Column doesn't exist in table
+        false::boolean as is_individual,  -- Column doesn't exist in table
+        COALESCE(d.cycle_to_date_amt, 0)::numeric,
+        COALESCE(d.is_pac, false)::boolean,
+        COALESCE(d.is_corporate, false)::boolean
     FROM cf_donations d
     WHERE d.report_id = p_report_id
     ORDER BY d.donation_date DESC, d.donation_id;

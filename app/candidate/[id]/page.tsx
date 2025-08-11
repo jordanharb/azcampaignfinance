@@ -86,12 +86,17 @@ interface Donation {
 
 interface SummaryStats {
   transaction_count: number;
-  total_contributions: number;
-  total_expenses: number;
+  total_contributions?: number;
+  total_raised?: number;
+  total_expenses?: number;
+  total_spent?: number;
   report_count: number;
   donation_count: number;
   first_activity: string | null;
   last_activity: string | null;
+  cash_on_hand?: number;
+  largest_donation?: number;
+  average_donation?: number;
 }
 
 function formatCurrency(amount: number | null): string {
@@ -456,7 +461,7 @@ export default function CandidatePage() {
             <div><strong>Office:</strong> {primaryRecord.office_name}</div>
           )}
           {summaryStats && (
-            <div><strong>Total Raised:</strong> {formatCurrency(summaryStats.total_contributions)}</div>
+            <div><strong>Total Raised:</strong> {formatCurrency(summaryStats.total_raised || summaryStats.total_contributions || 0)}</div>
           )}
         </div>
         
