@@ -1,0 +1,510 @@
+TEMP_FUNC <- function(filename) {
+  
+  #TEMP PARAMS:
+  # filename <- test
+  
+  #Establish path to file
+  DatPath_01 <- filename
+  
+  
+  ################################################################
+  #Schedule C2 gives the individual contributors
+  #Schedule C5 gives the aggregated small dollar contributors
+  #Schedule E1 gives the operating expense report
+  #Schedule E3 gives the contributions to other orgs
+  #Schedule E3a gives contributions to candidate committees
+  #Schedule E4 gives aggregate small expenses
+  #All but the first page and C2 are expendable
+  ################################################################
+  
+  ##############################################################################
+  #Main Processing Loops
+  ##############################################################################
+  
+  #####
+  #Read Data
+  #####
+  x <- pdftools::pdf_text(
+    pdf = DatPath_01,
+  )
+  
+  
+  #####
+  #Get Page Data for looping
+  #####
+  rptdat <- tibble(txt = x) %>% mutate(pagenum = row_number()) %>% pmap_dfr(
+    .f = function(...){
+      curtbl <- tibble(...)
+      
+      read_lines(curtbl$txt) %>% tibble(x=.) %>% mutate(
+        PageNum = curtbl$pagenum,
+        PageType = case_when(
+          any(str_detect(x,"Schedule C2")) ~ "Schedule C2",
+          any(str_detect(x,"Campaign Finance Report")) ~ "Cover Page",
+          TRUE ~ "NONE"
+        )
+      ) %>% group_by(
+        PageNum,
+        PageType
+      ) %>% nest() %>% ungroup() %>% filter(
+        PageType != "NONE"
+      )
+    }
+  )
+  
+  #####
+  #Pegging the cover page to a known static offset value
+  #####
+  covpg_offset <- rptdat$data[[1]] %>% mutate(
+    n=row_number()
+  ) %>% filter(
+    x == ""
+  ) %>% summarize(
+    val = min(n)
+  ) %>% unlist() %>% unname()
+  
+  #####
+  #Cover Page Info
+  #####
+  ReportTitle <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(1) %>% unlist() %>% unname() %>% str_trim()
+  
+  ReportName <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(covpg_offset+4) %>% unlist() %>% unname() %>% str_trim()
+  
+  Cycle <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(covpg_offset+5) %>% unlist() %>% unname() %>% 
+    str_trim() %>% str_squish() %>% str_remove("Election Cycle: ")
+  
+  FileDate <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(covpg_offset+6) %>% unlist() %>% unname() %>% 
+    str_trim() %>% str_squish() %>% str_remove("Date Filed: ")
+  
+  ReportPeriod <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(covpg_offset+7) %>% unlist() %>% unname() %>% 
+    str_trim() %>% str_squish() %>% str_remove("Reporting Period: ")
+  
+  OrgName <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(2) %>% unlist() %>% unname() %>% str_trim()
+  
+  OrgAddr <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(5) %>% unlist() %>% unname() %>% str_trim()
+  
+  OrgPhone <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(6) %>% unlist() %>% unname() %>% 
+    str_trim() %>% str_remove(pattern = "Phone: ")
+  
+  OrgEmail <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(7) %>% unlist() %>% unname() %>% 
+    str_trim() %>% str_remove(pattern = "Email: ")
+  
+  TreasurerName <- rptdat %>% filter(
+    PageType == "Cover Page"
+  ) %>% .$data %>% bind_rows() %>% slice(4) %>% unlist() %>% unname() %>% 
+    str_trim() %>% str_remove(pattern = "Treasurer: ")
+  
+  #####
+  #Run the Schedule C2 Loops to get all relevant name info in the proper format
+  #####
+  Sched_Dat <- rptdat %>% filter(
+    PageType == "Schedule C2"
+  ) %>% pmap_dfr(
+    .f = function(...){
+      curtbl <- tibble(...)
+      
+      pgnum <- curtbl %>% distinct(PageNum) %>% .$PageNum
+      pgtyp <- curtbl %>% distinct(PageType) %>% .$PageType
+      
+      
+      curtbl$data %>% mutate(
+        Indexer = case_when(
+          str_detect(x,pattern = "^Name:") ~ 1,
+          TRUE ~ 0
+        ),
+        Indexer = cumsum(Indexer)
+      ) %>% filter(
+        Indexer != 0 &
+          x != "" &
+          !str_detect(x,"Filed") &
+          !str_detect(x,"Total of Individual Contributions") &
+          !str_detect(x,"Total of Refunds Given") &
+          !str_detect(x,"Net Total of Individual Contributions") &
+          !str_detect(x,"Trans. Type:") &
+          !str_detect(x,"Original Date:") &
+          !str_detect(x,"Original Amount:") &
+          !str_detect(x,"Memo:")
+      ) %>% transmute(
+        Indexer,
+        Line = x
+      ) %>% group_by(Indexer) %>% nest() %>% ungroup() %>% pmap_dfr(
+        .l = .,
+        .f = function(...){
+          curtbl <- tibble(...) %>% unnest(cols = c(data))
+          
+          #Set the Index Value
+          Index <- curtbl %>% distinct(Indexer) %>% .$Indexer
+          
+          NameRow <- bind_rows(
+            slice(curtbl,1) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+              unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[1:2] %>%
+              bind_rows() %>% transmute(Key = x1, Values = x2)
+            ,
+            slice(curtbl,1) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+              unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[3:5] %>%
+              bind_rows() %>% pivot_longer(cols = 1:3,names_to = "Key",values_to = "Values") %>%
+              transmute(
+                Key = case_when(
+                  Key == "x3" ~ "Donation_Date",
+                  Key == "x4" ~ "Donation_Amt",
+                  Key == "x5" ~ "CycleToDate_Amt"
+                ),
+                Values
+              )
+          )
+          
+          AddressRow <- bind_rows(
+            slice(curtbl,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+              unlist()  %>% tibble(x=.) %>% filter() %>% unlist() %>% .[c(1,8)] %>% 
+              bind_rows() %>% 
+              select(Key = 1,Values=2)
+            ,
+            slice(curtbl,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+              unlist()  %>% tibble(x=.) %>% filter(row_number() == max(row_number())) %>%
+              transmute(
+                Key = "Donation_Type",
+                Values = x
+              )
+          )
+          
+          OccupationRow <- slice(curtbl,3) %>% select(Line) %>% 
+            unname() %>% str_split(pattern="  ") %>%
+            unlist() %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% {
+              if(any(names(.) %in% c("x"))){
+                tibble(x1 = NA_character_,x2 = NA_character_)
+              } else .
+            } %>% bind_rows() %>% transmute(
+              Key = if_else(is.na(x1),"Occupation:",x1),
+              Values = if_else(is.na(x2),"NO INFO",x2)
+            )
+          
+          #Combine Data and tidy
+          bind_rows(
+            NameRow,
+            AddressRow,
+            OccupationRow
+          ) %>% mutate(
+            Indexer = Index
+          ) %>% pivot_wider(
+            names_from = Key,
+            values_from = Values
+          ) %>% mutate(
+            across(
+              .cols = where(is.character),
+              .fns = ~str_trim(.)
+            )
+          ) %>% select(-Indexer)
+          
+        }
+      ) %>% mutate(
+        PageNum = pgnum,
+        PageType = pgtyp
+      )
+    }
+  )
+  
+  #####
+  #Reordering the fields, adding in cover page info, and returning final result from
+  #the function.
+  #####
+  if(Sched_Dat %>% nrow() == 0){
+    return(Sched_Dat)
+  } else {
+    return(
+      Sched_Dat %>% transmute(
+        Rpt_Title = ReportTitle,
+        Rpt_Name = ReportName,
+        Rpt_Cycle = Cycle,
+        Rpt_FileDate = FileDate,
+        Rpt_Period = ReportPeriod,
+        OrgNm = OrgName,
+        OrgEml = OrgEmail,
+        OrgTel = OrgPhone,
+        OrgAdr = OrgAddr,
+        OrgTreasurer = TreasurerName,
+        PageNum,
+        PageType,
+        Donor_Name = `Name:`,
+        Donor_Addr = `Address:`,
+        Donor_Occupation = `Occupation:`,
+        Donation_Date,
+        Donation_Amt,
+        Donation_Type,
+        CycleToDate_Amt
+      )
+    )
+  }
+  
+  
+  
+  ##############################################################################
+  #DEPRECATED - TESTING ONLY
+  ##############################################################################
+  # 
+  # 
+  # tibble(txt = x) %>% .[[5,1]] %>% read_lines() %>% tibble(x = .) %>% slice(4) %>% unname() %>% unlist() %>% View()
+  # 
+  # 
+  # ####
+  # For Schedule C2:
+  # ####
+  # tibble(txt = x) %>% .[[5,1]] %>% read_lines() %>% tibble(x = .) %>%
+  #   slice(4) %>% unname() %>% str_split(pattern = "  ") %>%
+  #   unlist() %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>%
+  #   bind_rows() %>% pivot_longer(cols = 3:5,names_to = "Key",values_to = "Values")
+  # 
+  # #Add an indexer
+  # pagedat <- tibble(txt = x) %>% .[[rstudioapi::showPrompt("Enter Page Num:","please enter page num") %>% as.numeric(),1]] %>% read_lines() %>% tibble(x = .) %>% mutate(
+  #   Indexer = case_when(
+  #     str_detect(x,pattern = "^Name:") ~ 1,
+  #     TRUE ~ 0
+  #   ),
+  #   Indexer = cumsum(Indexer)
+  # ) %>% filter(
+  #   Indexer != 0 &
+  #     x != "" &
+  #     !str_detect(x,"Filed") &
+  #     !str_detect(x,"Total of Individual Contributions") &
+  #     !str_detect(x,"Total of Refunds Given") &
+  #     !str_detect(x,"Net Total of Individual Contributions") &
+  #     !str_detect(x,"Trans. Type:") &
+  #     !str_detect(x,"Original Date:") &
+  #     !str_detect(x,"Original Amount:") &
+  #     !str_detect(x,"Memo:")
+  # ) %>% transmute(
+  #   Indexer,
+  #   Line = x
+  # )
+  # 
+  # # Loop for a single page in a single report
+  # pagedat %>% group_by(Indexer) %>% nest() %>% ungroup() %>% pmap_dfr(
+  #   .l = .,
+  #   .f = function(...){
+  #     curtbl <- tibble(...) %>% unnest(cols = c(data))
+  # 
+  #     #Set the Index Value
+  #     Index <- curtbl %>% distinct(Indexer) %>% .$Indexer
+  # 
+  #     NameRow <- bind_rows(
+  #     slice(curtbl,1) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #       unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[1:2] %>%
+  #       bind_rows() %>% transmute(Key = x1, Values = x2)
+  #     ,
+  #     slice(curtbl,1) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #       unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[3:5] %>%
+  #       bind_rows() %>% pivot_longer(cols = 1:3,names_to = "Key",values_to = "Values") %>%
+  #       transmute(
+  #         Key = case_when(
+  #           Key == "x3" ~ "Donation_Date",
+  #           Key == "x4" ~ "Donation_Amt",
+  #           Key == "x5" ~ "CycleToDate_Amt"
+  #         ),
+  #         Values
+  #       )
+  #     )
+  # 
+  #     AddressRow <- bind_rows(
+  #       slice(curtbl,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #         unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[1:2] %>%
+  #         bind_rows() %>% transmute(Key = x1, Values = x2)
+  #       ,
+  #       slice(curtbl,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #         unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[3] %>%
+  #         bind_rows() %>%
+  #         transmute(
+  #           Key = "Donation_Type",
+  #           Values = x3
+  #         )
+  #     )
+  # 
+  #     OccupationRow <- slice(curtbl,3) %>% select(Line) %>%
+  #       unname() %>% str_split(pattern="  ") %>%
+  #       unlist() %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% {
+  #         if(names(.) %in% c("x")){
+  #           tibble(x1 = NA_character_,x2 = NA_character_)
+  #         } else .
+  #       } %>% bind_rows() %>% transmute(
+  #         Key = if_else(is.na(x1),"Occupation:",x1),
+  #         Values = if_else(is.na(x2),"NO INFO",x2)
+  #       )
+  # 
+  #     #Combine Data and tidy
+  #     bind_rows(
+  #       NameRow,
+  #       AddressRow,
+  #       OccupationRow
+  #     ) %>% mutate(
+  #       Indexer = Index
+  #     ) %>% pivot_wider(
+  #       names_from = Key,
+  #       values_from = Values
+  #     ) %>% mutate(
+  #       across(
+  #         .cols = where(is.character),
+  #         .fns = ~str_trim(.)
+  #       )
+  #     ) %>% select(-Indexer)
+  # 
+  #   }
+  # )
+  
+  # #####
+  # #Specific Line Testing
+  # #####
+  # test_row <- pagedat %>% group_by(Indexer) %>% nest() %>% ungroup() %>% slice(9) %>% unnest(
+  #   cols = c(data)
+  # )
+  # 
+  # test_AddressStruct <- slice(test_row,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>% unlist()
+  # 
+  # test_AddressRow <- bind_rows(
+  #   slice(test_row,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #     unlist()  %>% tibble(x=.) %>% filter() %>% unlist() %>% .[c(1,8)] %>% 
+  #     bind_rows() %>% 
+  #     select(Key = 1,Values=2)
+  #   ,
+  #   slice(test_row,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #     unlist()  %>% tibble(x=.) %>% filter(row_number() == max(row_number())) %>%
+  #     transmute(
+  #       Key = "Donation_Type",
+  #       Values = x
+  #     )
+  # )
+  # 
+  # 
+  # #####
+  # #Testing functionality of Possibly -- handles loop errors really well
+  # #####
+  # test_func <- possibly(
+  #   .f = function(...){
+  #     curtbl <- tibble(...)
+  #     
+  #     pgnum <- curtbl %>% distinct(PageNum) %>% .$PageNum
+  #     pgtyp <- curtbl %>% distinct(PageType) %>% .$PageType
+  #     
+  #     
+  #     curtbl$data %>% mutate(
+  #       Indexer = case_when(
+  #         str_detect(x,pattern = "^Name:") ~ 1,
+  #         TRUE ~ 0
+  #       ),
+  #       Indexer = cumsum(Indexer)
+  #     ) %>% filter(
+  #       Indexer != 0 &
+  #         x != "" &
+  #         !str_detect(x,"Filed") &
+  #         !str_detect(x,"Total of Individual Contributions") &
+  #         !str_detect(x,"Total of Refunds Given") &
+  #         !str_detect(x,"Net Total of Individual Contributions") &
+  #         !str_detect(x,"Trans. Type:") &
+  #         !str_detect(x,"Original Date:") &
+  #         !str_detect(x,"Original Amount:") &
+  #         !str_detect(x,"Memo:")
+  #     ) %>% transmute(
+  #       Indexer,
+  #       Line = x
+  #     ) %>% group_by(Indexer) %>% nest() %>% ungroup() %>% pmap_dfr(
+  #       .l = .,
+  #       .f = function(...){
+  #         curtbl <- tibble(...) %>% unnest(cols = c(data))
+  #         
+  #         #Set the Index Value
+  #         Index <- curtbl %>% distinct(Indexer) %>% .$Indexer
+  #         
+  #         NameRow <- bind_rows(
+  #           slice(curtbl,1) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #             unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[1:2] %>%
+  #             bind_rows() %>% transmute(Key = x1, Values = x2)
+  #           ,
+  #           slice(curtbl,1) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #             unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[3:5] %>%
+  #             bind_rows() %>% pivot_longer(cols = 1:3,names_to = "Key",values_to = "Values") %>%
+  #             transmute(
+  #               Key = case_when(
+  #                 Key == "x3" ~ "Donation_Date",
+  #                 Key == "x4" ~ "Donation_Amt",
+  #                 Key == "x5" ~ "CycleToDate_Amt"
+  #               ),
+  #               Values
+  #             )
+  #         )
+  #         
+  #         AddressRow <- bind_rows(
+  #           slice(curtbl,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #             unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[1:2] %>%
+  #             bind_rows() %>% transmute(Key = x1, Values = x2)
+  #           ,
+  #           slice(curtbl,2) %>% select(Line) %>% unname() %>% str_split(pattern = "  ") %>%
+  #             unlist()  %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% .[3] %>%
+  #             bind_rows() %>%
+  #             transmute(
+  #               Key = "Donation_Type",
+  #               Values = x3
+  #             )
+  #         )
+  #         
+  #         OccupationRow <- slice(curtbl,3) %>% select(Line) %>% 
+  #           unname() %>% str_split(pattern="  ") %>%
+  #           unlist() %>% tibble(x=.) %>% filter(x!="") %>% unlist() %>% {
+  #             if(names(.) %in% c("x")){
+  #               tibble(x1 = NA_character_,x2 = NA_character_)
+  #             } else .
+  #           } %>% bind_rows() %>% transmute(
+  #             Key = if_else(is.na(x1),"Occupation:",x1),
+  #             Values = if_else(is.na(x2),"NO INFO",x2)
+  #           )
+  #         
+  #         #Combine Data and tidy
+  #         bind_rows(
+  #           NameRow,
+  #           AddressRow,
+  #           OccupationRow
+  #         ) %>% mutate(
+  #           Indexer = Index
+  #         ) %>% pivot_wider(
+  #           names_from = Key,
+  #           values_from = Values
+  #         ) %>% mutate(
+  #           across(
+  #             .cols = where(is.character),
+  #             .fns = ~str_trim(.)
+  #           )
+  #         ) %>% select(-Indexer)
+  #         
+  #       }
+  #     ) %>% mutate(
+  #       PageNum = pgnum,
+  #       PageType = pgtyp
+  #     )
+  #   }
+  #   ,
+  #   otherwise = "You Fucked Up"
+  # )
+  # rptdat %>% filter(
+  #   PageType == "Schedule C2"
+  # ) %>% pmap(
+  #   .f = test_func
+  # ) %>% View()
+  
+    
+ 
+  
+}

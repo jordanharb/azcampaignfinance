@@ -1,53 +1,102 @@
-import { restJson } from '@/lib/rest';
-import { Entity, EntityRecord, Report, Transaction } from '@/lib/types';
-import { APP_CONFIG } from '@/lib/constants';
-import { notFound } from 'next/navigation';
+'use client';
 
-interface CandidatePageProps {
-  params: { id: string };
+import { useEffect, useState, useRef } from 'react';
+import { useParams } from 'next/navigation';
+
+interface Entity {
+  entity_id: number;
+  primary_candidate_name: string | null;
+  primary_committee_name: string | null;
+  primary_record_id: number | null;
 }
 
-async function loadEntityData(entityId: string) {
-  try {
-    // Load entity details
-    const entities = await restJson<Entity[]>(`cf_entities?entity_id=eq.${entityId}&select=*`);
-    const entity = entities[0];
-    
-    if (!entity) {
-      return null;
-    }
-
-    // Load primary entity record
-    const records = await restJson<EntityRecord[]>(
-      `cf_entity_records?entity_id=eq.${entityId}&select=party_name,office_name,is_primary_record,registration_date&order=is_primary_record.desc,registration_date.desc&limit=1`
-    );
-    const primaryRecord = records[0] || null;
-
-    // Load reports
-    const reports = await restJson<Report[]>(
-      `vw_reports_export?entity_id=eq.${entityId}&select=*&order=rpt_file_date.desc`
-    );
-
-    // Load transaction preview (limited)
-    const transactions = await restJson<Transaction[]>(
-      `vw_transactions_export?entity_id=eq.${entityId}&select=*&order=transaction_date.desc&limit=${APP_CONFIG.TRANSACTION_PREVIEW_LIMIT}`
-    );
-
-    return {
-      entity,
-      primaryRecord,
-      reports,
-      transactions,
-    };
-  } catch (error) {
-    console.error('Error loading entity data:', error);
-    return null;
-  }
+interface FinancialRecord {
+  record_id: number;
+  party_name: string | null;
+  office_name: string | null;
 }
 
-function formatCurrency(amount: number | null | undefined): string {
-  if (!amount || amount === 0) return '$0';
-  return `$${Math.round(amount).toLocaleString()}`;
+interface Transaction {
+  transaction_id: number;
+  record_id: number;
+  entity_id: number;
+  transaction_date: string;
+  amount: number;
+  transaction_type: string;
+  contributor_name: string | null;
+  vendor_name: string | null;
+  occupation: string | null;
+  employer: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  country: string | null;
+  memo: string | null;
+  in_kind_description: string | null;
+  loan_amount: string | null;
+  check_number: string | null;
+  total_count: number;
+}
+
+interface Report {
+  report_id: number;
+  record_id?: number;
+  entity_id?: number;
+  report_name: string;
+  report_period: string;
+  filing_date: string;
+  pdf_url: string | null;
+  total_income?: number;
+  total_donations?: number;
+  total_expense?: number;
+  total_expenditures?: number;
+  cash_balance?: number;
+  donation_count: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  cash_on_hand_beginning?: number | null;
+  cash_on_hand_end?: number | null;
+}
+
+interface Donation {
+  donation_id: number;
+  report_id: number;
+  entity_id: number;
+  report_name: string;
+  filing_date: string;
+  donation_date: string;
+  amount: number;
+  donor_name: string;
+  donor_type: string;
+  donor_first_name: string | null;
+  donor_last_name: string | null;
+  donor_organization: string | null;
+  occupation: string | null;
+  employer: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  country: string | null;
+  is_individual: boolean;
+  total_count: number;
+}
+
+interface SummaryStats {
+  transaction_count: number;
+  total_contributions: number;
+  total_expenses: number;
+  report_count: number;
+  donation_count: number;
+  first_activity: string | null;
+  last_activity: string | null;
+}
+
+function formatCurrency(amount: number | null): string {
+  if (!amount) return '$0';
+  return `$${Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatDate(dateString: string | null): string {
@@ -64,360 +113,741 @@ function formatDate(dateString: string | null): string {
   }
 }
 
-export default async function CandidatePage({ params }: CandidatePageProps) {
-  const data = await loadEntityData(params.id);
+async function downloadCSV(data: any, filename: string, columns: { key: string; label: string }[]) {
+  // Ensure data is an array
+  const dataArray = Array.isArray(data) ? data : [];
   
-  if (!data) {
-    notFound();
+  if (dataArray.length === 0) {
+    console.warn('No data to download');
+    return;
+  }
+  
+  // Create CSV content
+  const headers = columns.map(col => col.label).join(',');
+  const rows = dataArray.map(row => 
+    columns.map(col => {
+      const value = row[col.key];
+      // Escape values containing commas or quotes
+      if (value && (value.toString().includes(',') || value.toString().includes('"'))) {
+        return `"${value.toString().replace(/"/g, '""')}"`;
+      }
+      return value || '';
+    }).join(',')
+  );
+  
+  const csv = [headers, ...rows].join('\n');
+  
+  // Create blob and download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+export default function CandidatePage() {
+  const params = useParams();
+  const entityId = params.id as string;
+  
+  const [loading, setLoading] = useState(true);
+  const [entity, setEntity] = useState<Entity | null>(null);
+  const [primaryRecord, setPrimaryRecord] = useState<FinancialRecord | null>(null);
+  const [summaryStats, setSummaryStats] = useState<SummaryStats | null>(null);
+  
+  // Transactions state
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionOffset, setTransactionOffset] = useState(0);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(true);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+  
+  // Reports state
+  const [reports, setReports] = useState<Report[]>([]);
+  
+  // Donations state
+  const [donations, setDonations] = useState<Donation[]>([]);
+  const [donationOffset, setDonationOffset] = useState(0);
+  const [hasMoreDonations, setHasMoreDonations] = useState(true);
+  const [loadingDonations, setLoadingDonations] = useState(false);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'transactions' | 'reports'>('transactions');
+  const [reportTab, setReportTab] = useState<'reports' | 'donations'>('reports');
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const [transactionDownloadMenuOpen, setTransactionDownloadMenuOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const transactionDropdownRef = useRef<HTMLDivElement>(null);
+  
+  const ITEMS_PER_PAGE = 50;
+
+  // Click outside handler for dropdowns
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDownloadMenuOpen(false);
+      }
+      if (transactionDropdownRef.current && !transactionDropdownRef.current.contains(event.target as Node)) {
+        setTransactionDownloadMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Load initial data
+  useEffect(() => {
+    async function loadData() {
+      try {
+        // Fetch entity info
+        const response = await fetch(`/api/entity/${entityId}`);
+        if (!response.ok) throw new Error('Failed to fetch entity');
+        
+        const data = await response.json();
+        setEntity(data.entity);
+        setPrimaryRecord(data.primaryRecord);
+        setSummaryStats(data.summaryStats);
+        setReports(data.reports);
+        
+        // Load initial transactions
+        await loadMoreTransactions(true);
+        
+        // Load initial donations
+        await loadMoreDonations(true);
+      } catch (error) {
+        console.error('Error loading entity data:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadData();
+  }, [entityId]);
+
+  // Load more transactions
+  async function loadMoreTransactions(initial = false) {
+    if (loadingTransactions || (!initial && !hasMoreTransactions)) return;
+    
+    setLoadingTransactions(true);
+    try {
+      const offset = initial ? 0 : transactionOffset;
+      const response = await fetch(
+        `/api/entity/${entityId}/transactions?limit=${ITEMS_PER_PAGE}&offset=${offset}`
+      );
+      
+      if (!response.ok) throw new Error('Failed to fetch transactions');
+      
+      const newTransactions = await response.json();
+      
+      if (newTransactions && newTransactions.length > 0) {
+        if (initial) {
+          setTransactions(newTransactions);
+          setTransactionOffset(ITEMS_PER_PAGE);
+        } else {
+          setTransactions(prev => [...prev, ...newTransactions]);
+          setTransactionOffset(prev => prev + ITEMS_PER_PAGE);
+        }
+        
+        // Check if we have more
+        const totalCount = newTransactions[0].total_count;
+        if (offset + ITEMS_PER_PAGE >= totalCount) {
+          setHasMoreTransactions(false);
+        }
+      } else {
+        setHasMoreTransactions(false);
+      }
+    } catch (error) {
+      console.error('Error loading transactions:', error);
+      setHasMoreTransactions(false);
+    } finally {
+      setLoadingTransactions(false);
+    }
   }
 
-  const { entity, primaryRecord, reports, transactions } = data;
+  // Load more donations
+  async function loadMoreDonations(initial = false) {
+    if (loadingDonations || (!initial && !hasMoreDonations)) return;
+    
+    setLoadingDonations(true);
+    try {
+      const offset = initial ? 0 : donationOffset;
+      const response = await fetch(
+        `/api/entity/${entityId}/donations?limit=${ITEMS_PER_PAGE}&offset=${offset}`
+      );
+      
+      if (!response.ok) throw new Error('Failed to fetch donations');
+      
+      const newDonations = await response.json();
+      
+      if (newDonations && newDonations.length > 0) {
+        if (initial) {
+          setDonations(newDonations);
+          setDonationOffset(ITEMS_PER_PAGE);
+        } else {
+          setDonations(prev => [...prev, ...newDonations]);
+          setDonationOffset(prev => prev + ITEMS_PER_PAGE);
+        }
+        
+        // Check if we have more
+        const totalCount = newDonations[0].total_count;
+        if (offset + ITEMS_PER_PAGE >= totalCount) {
+          setHasMoreDonations(false);
+        }
+      } else {
+        setHasMoreDonations(false);
+      }
+    } catch (error) {
+      console.error('Error loading donations:', error);
+      setHasMoreDonations(false);
+    } finally {
+      setLoadingDonations(false);
+    }
+  }
+
+  // Download handlers
+  async function downloadTransactionsCSV() {
+    const response = await fetch(`/api/entity/${entityId}/transactions?format=csv`);
+    const allTransactions = await response.json();
+    
+    if (allTransactions) {
+      downloadCSV(allTransactions, `transactions_${entityId}.csv`, [
+        { key: 'transaction_id', label: 'Transaction ID' },
+        { key: 'record_id', label: 'Record ID' },
+        { key: 'entity_id', label: 'Entity ID' },
+        { key: 'transaction_date', label: 'Date' },
+        { key: 'amount', label: 'Amount' },
+        { key: 'transaction_type', label: 'Type' },
+        { key: 'contributor_name', label: 'Contributor Name' },
+        { key: 'vendor_name', label: 'Vendor Name' },
+        { key: 'occupation', label: 'Occupation' },
+        { key: 'employer', label: 'Employer' },
+        { key: 'address_line_1', label: 'Address Line 1' },
+        { key: 'address_line_2', label: 'Address Line 2' },
+        { key: 'city', label: 'City' },
+        { key: 'state', label: 'State' },
+        { key: 'zip_code', label: 'Zip Code' },
+        { key: 'country', label: 'Country' },
+        { key: 'memo', label: 'Memo' },
+        { key: 'in_kind_description', label: 'In-Kind Description' },
+        { key: 'loan_amount', label: 'Loan Amount' },
+        { key: 'check_number', label: 'Check Number' }
+      ]);
+    }
+  }
+
+  async function downloadReportsCSV() {
+    const response = await fetch(`/api/entity/${entityId}/reports?format=csv`);
+    const allReports = await response.json();
+    
+    if (allReports) {
+      downloadCSV(allReports, `reports_${entityId}.csv`, [
+        { key: 'report_id', label: 'Report ID' },
+        { key: 'record_id', label: 'Record ID' },
+        { key: 'entity_id', label: 'Entity ID' },
+        { key: 'report_name', label: 'Report Name' },
+        { key: 'filing_date', label: 'Filing Date' },
+        { key: 'report_period', label: 'Period' },
+        { key: 'start_date', label: 'Start Date' },
+        { key: 'end_date', label: 'End Date' },
+        { key: 'total_donations', label: 'Total Donations' },
+        { key: 'donation_count', label: 'Donation Count' },
+        { key: 'cash_on_hand_beginning', label: 'Cash on Hand (Beginning)' },
+        { key: 'cash_on_hand_end', label: 'Cash on Hand (End)' },
+        { key: 'pdf_url', label: 'PDF URL' }
+      ]);
+    }
+  }
+
+  async function downloadDonationsCSV() {
+    const response = await fetch(`/api/entity/${entityId}/donations?format=csv`);
+    const allDonations = await response.json();
+    
+    if (allDonations) {
+      downloadCSV(allDonations, `donations_${entityId}.csv`, [
+        { key: 'donation_id', label: 'Donation ID' },
+        { key: 'report_id', label: 'Report ID' },
+        { key: 'entity_id', label: 'Entity ID' },
+        { key: 'report_name', label: 'Report' },
+        { key: 'filing_date', label: 'Filing Date' },
+        { key: 'donation_date', label: 'Date' },
+        { key: 'amount', label: 'Amount' },
+        { key: 'donor_name', label: 'Donor' },
+        { key: 'donor_first_name', label: 'First Name' },
+        { key: 'donor_last_name', label: 'Last Name' },
+        { key: 'donor_organization', label: 'Organization' },
+        { key: 'donor_type', label: 'Type' },
+        { key: 'occupation', label: 'Occupation' },
+        { key: 'employer', label: 'Employer' },
+        { key: 'address', label: 'Address' },
+        { key: 'city', label: 'City' },
+        { key: 'state', label: 'State' },
+        { key: 'zip', label: 'Zip' },
+        { key: 'country', label: 'Country' },
+        { key: 'is_individual', label: 'Is Individual' }
+      ]);
+    }
+  }
+
+  async function downloadReportDonationsCSV(reportId: number, reportName: string) {
+    const response = await fetch(`/api/entity/${entityId}/reports/${reportId}/donations`);
+    const reportDonations = await response.json();
+    
+    if (reportDonations) {
+      downloadCSV(reportDonations, `donations_${reportName.replace(/[^a-z0-9]/gi, '_')}.csv`, [
+        { key: 'donation_id', label: 'Donation ID' },
+        { key: 'donation_date', label: 'Date' },
+        { key: 'amount', label: 'Amount' },
+        { key: 'donor_name', label: 'Donor' },
+        { key: 'donor_first_name', label: 'First Name' },
+        { key: 'donor_last_name', label: 'Last Name' },
+        { key: 'donor_organization', label: 'Organization' },
+        { key: 'donor_type', label: 'Type' },
+        { key: 'occupation', label: 'Occupation' },
+        { key: 'employer', label: 'Employer' },
+        { key: 'address', label: 'Address' },
+        { key: 'city', label: 'City' },
+        { key: 'state', label: 'State' },
+        { key: 'zip', label: 'Zip' },
+        { key: 'country', label: 'Country' },
+        { key: 'is_individual', label: 'Is Individual' }
+      ]);
+    }
+  }
+
+  if (loading) {
+    return <div style={{ padding: '2rem' }}>Loading...</div>;
+  }
+
+  if (!entity) {
+    return <div style={{ padding: '2rem' }}>Entity not found</div>;
+  }
+
   const entityName = entity.primary_candidate_name || entity.primary_committee_name || 'Unknown Entity';
 
   return (
-    <div>
+    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       {/* Header Section */}
       <div style={{
         marginBottom: '2rem',
         padding: '2rem',
         backgroundColor: '#f8f9fa',
         borderRadius: '0.5rem',
-        border: '1px solid #e5e5e5',>
+        border: '1px solid #e5e5e5',
+      }}>
         <h1 style={{
           fontSize: '2rem',
           fontWeight: '700',
           marginBottom: '1rem',
-          color: '#1f2937',
-          lineHeight: '1.2',>
+          color: '#1f2937'
+        }}>
           {entityName}
         </h1>
         
-        <div style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '1.5rem',
-          alignItems: 'center',
-          marginBottom: '2rem',
-          fontSize: '0.95rem',
-          color: '#6b7280',>
-          <span>
-            <strong>Party:</strong> {primaryRecord?.party_name || '—'}
-          </span>
-          <span>
-            <strong>Office:</strong> {primaryRecord?.office_name || '—'}
-          </span>
-          <span>
-            <strong>Last Activity:</strong> {formatDate(entity.latest_activity)}
-          </span>
+        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          {primaryRecord?.party_name && (
+            <div><strong>Party:</strong> {primaryRecord.party_name}</div>
+          )}
+          {primaryRecord?.office_name && (
+            <div><strong>Office:</strong> {primaryRecord.office_name}</div>
+          )}
+          {summaryStats && (
+            <div><strong>Total Raised:</strong> {formatCurrency(summaryStats.total_contributions)}</div>
+          )}
         </div>
-
-        {/* Financial Summary */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '1rem',
-          marginBottom: '2rem',>
-          <div style={{
-            padding: '1rem',
-            backgroundColor: 'white',
-            borderRadius: '0.375rem',
-            border: '1px solid #e5e7eb',>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em'>
-              Total Income
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#16a34a'>
-              {formatCurrency(entity.total_income_all_records)}
-            </div>
+        
+        {summaryStats && (
+          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', fontSize: '0.875rem', color: '#666' }}>
+            <div>{summaryStats.transaction_count.toLocaleString()} transactions</div>
+            <div>{summaryStats.report_count} reports</div>
+            <div>{summaryStats.donation_count.toLocaleString()} donations</div>
+            <div>Activity: {formatDate(summaryStats.first_activity)} - {formatDate(summaryStats.last_activity)}</div>
           </div>
-          <div style={{
-            padding: '1rem',
-            backgroundColor: 'white',
-            borderRadius: '0.375rem',
-            border: '1px solid #e5e7eb',>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em'>
-              Total Expense
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#dc2626'>
-              {formatCurrency(entity.total_expense_all_records)}
-            </div>
-          </div>
-          <div style={{
-            padding: '1rem',
-            backgroundColor: 'white',
-            borderRadius: '0.375rem',
-            border: '1px solid #e5e7eb',>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em'>
-              Reports
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0066cc'>
-              {reports.length}
-            </div>
-          </div>
-        </div>
-
-        {/* Download Buttons */}
-        <div style={{
-          display: 'flex',
-          gap: '1rem',
-          flexWrap: 'wrap',>
-          <form action={`/api/download/entity-reports`} method="get">
-            <input type="hidden" name="id" value={params.id} />
-            <button 
-              type="submit"
-              style={{
-                padding: '0.75rem 1.5rem',
-                fontSize: '0.95rem',
-                fontWeight: '600',
-                color: 'white',
-                backgroundColor: '#16a34a',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-            >
-              📄 Download All Reports (CSV)
-            </button>
-          </form>
-          
-          <form action={`/api/download/entity-transactions`} method="get">
-            <input type="hidden" name="id" value={params.id} />
-            <button 
-              type="submit"
-              style={{
-                padding: '0.75rem 1.5rem',
-                fontSize: '0.95rem',
-                fontWeight: '600',
-                color: 'white',
-                backgroundColor: '#0066cc',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-            >
-              💰 Download All Transactions (CSV)
-            </button>
-          </form>
-        </div>
+        )}
       </div>
 
-      {/* Reports Section */}
-      <section style={{ marginBottom: '3rem'>
-        <h2 style={{
-          fontSize: '1.5rem',
-          fontWeight: '700',
-          marginBottom: '1rem',
-          color: '#1f2937',>
-          Reports ({reports.length})
-        </h2>
-        
-        {reports.length > 0 ? (
-          <div style={{
-            border: '1px solid #e5e5e5',
-            borderRadius: '0.5rem',
-            overflow: 'hidden',
-            backgroundColor: 'white',>
-            <div style={{ overflowX: 'auto'>
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: '0.9rem',>
-                <thead>
-                  <tr style={{
-                    backgroundColor: '#f9fafb',
-                    borderBottom: '1px solid #e5e5e5',>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', minWidth: '100px'>Date</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', minWidth: '200px'>Report</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', minWidth: '120px'>Donations</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', minWidth: '120px'>Expenditures</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: '600', minWidth: '80px'>PDF</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reports.map((report) => (
-                    <tr 
-                      key={report.report_id}
-                      style={{
-                        borderBottom: '1px solid #f0f0f0',
-                        transition: 'background-color 0.15s ease',
-                    >
-                      <td style={{ padding: '0.75rem', color: '#4b5563'>
-                        {formatDate(report.rpt_file_date)}
-                      </td>
-                      <td style={{ padding: '0.75rem', fontWeight: '500'>
-                        {report.rpt_title || report.rpt_name || '—'}
-                      </td>
-                      <td style={{ 
-                        padding: '0.75rem', 
-                        textAlign: 'right',
-                        fontFamily: 'ui-monospace, Monaco, Consolas, monospace',
-                        fontSize: '0.85rem',
-                        color: '#16a34a',>
-                        {formatCurrency(report.total_donations)}
-                      </td>
-                      <td style={{ 
-                        padding: '0.75rem', 
-                        textAlign: 'right',
-                        fontFamily: 'ui-monospace, Monaco, Consolas, monospace',
-                        fontSize: '0.85rem',
-                        color: '#dc2626',>
-                        {formatCurrency(report.total_expenditures)}
-                      </td>
-                      <td style={{ padding: '0.75rem', textAlign: 'center'>
-                        {report.pdf_url ? (
-                          <a 
-                            href={report.pdf_url} 
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: '#0066cc',
-                              textDecoration: 'none',
-                              fontSize: '0.85rem',
-                              fontWeight: '500',
-                          >
-                            View PDF
-                          </a>
-                        ) : (
-                          <span style={{ color: '#9ca3af'>—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : (
-          <div style={{
-            padding: '2rem',
-            textAlign: 'center',
-            backgroundColor: '#f9fafb',
-            border: '1px solid #e5e5e5',
-            borderRadius: '0.5rem',
-            color: '#6b7280',>
-            No reports available for this entity.
-          </div>
-        )}
-      </section>
-
-      {/* Transactions Preview Section */}
-      <section>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',>
-          <h2 style={{
-            fontSize: '1.5rem',
-            fontWeight: '700',
-            color: '#1f2937',
-            margin: 0,>
-            Recent Transactions
-          </h2>
-          <div style={{
-            fontSize: '0.85rem',
-            color: '#6b7280',
-            fontStyle: 'italic',>
-            Showing {Math.min(transactions.length, APP_CONFIG.TRANSACTION_PREVIEW_LIMIT)} most recent
-          </div>
+      {/* Main Tabs */}
+      <div style={{ marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '1rem', borderBottom: '2px solid #e5e5e5', marginBottom: '1rem' }}>
+          <button
+            onClick={() => setActiveTab('transactions')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'transactions' ? '2px solid #2563eb' : '2px solid transparent',
+              color: activeTab === 'transactions' ? '#2563eb' : '#666',
+              fontWeight: activeTab === 'transactions' ? '600' : '400',
+              cursor: 'pointer',
+              marginBottom: '-2px'
+            }}
+          >
+            Transactions ({summaryStats?.transaction_count.toLocaleString() || 0})
+          </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'reports' ? '2px solid #2563eb' : '2px solid transparent',
+              color: activeTab === 'reports' ? '#2563eb' : '#666',
+              fontWeight: activeTab === 'reports' ? '600' : '400',
+              cursor: 'pointer',
+              marginBottom: '-2px'
+            }}
+          >
+            Reports & Donations
+          </button>
         </div>
-        
-        {transactions.length > 0 ? (
-          <div style={{
-            border: '1px solid #e5e5e5',
-            borderRadius: '0.5rem',
-            overflow: 'hidden',
-            backgroundColor: 'white',>
-            <div style={{ overflowX: 'auto'>
-              <table style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                fontSize: '0.9rem',>
+
+        {/* Transactions Tab */}
+        {activeTab === 'transactions' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '600' }}>Campaign Transactions</h2>
+              <div ref={transactionDropdownRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setTransactionDownloadMenuOpen(!transactionDownloadMenuOpen)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  💰 Download CSV ▼
+                </button>
+                {transactionDownloadMenuOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '0.25rem',
+                    backgroundColor: 'white',
+                    border: '1px solid #e5e5e5',
+                    borderRadius: '0.375rem',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                    zIndex: 10
+                  }}>
+                    <button
+                      onClick={() => {
+                        downloadTransactionsCSV();
+                        setTransactionDownloadMenuOpen(false);
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '0.5rem 1rem',
+                        textAlign: 'left',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Download All Transactions
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{
-                    backgroundColor: '#f9fafb',
-                    borderBottom: '1px solid #e5e5e5',>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', minWidth: '100px'>Date</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', minWidth: '150px'>Type</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', minWidth: '100px'>Amount</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', minWidth: '200px'>Counterparty</th>
-                    <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', minWidth: '120px'>Location</th>
+                  <tr style={{ borderBottom: '2px solid #e5e5e5' }}>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Date</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'right' }}>Amount</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Type</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Name</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Occupation</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>Location</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map((transaction) => (
-                    <tr 
-                      key={transaction.public_transaction_id}
-                      style={{
-                        borderBottom: '1px solid #f0f0f0',
-                        transition: 'background-color 0.15s ease',
-                    >
-                      <td style={{ padding: '0.75rem', color: '#4b5563'>
-                        {formatDate(transaction.transaction_date)}
-                      </td>
-                      <td style={{ padding: '0.75rem', fontSize: '0.85rem'>
-                        {transaction.transaction_type || '—'}
-                      </td>
+                  {transactions.map((trans) => (
+                    <tr key={trans.transaction_id} style={{ borderBottom: '1px solid #e5e5e5' }}>
+                      <td style={{ padding: '0.75rem' }}>{formatDate(trans.transaction_date)}</td>
                       <td style={{ 
                         padding: '0.75rem', 
                         textAlign: 'right',
-                        fontFamily: 'ui-monospace, Monaco, Consolas, monospace',
-                        fontSize: '0.85rem',
-                        fontWeight: '600',>
-                        {formatCurrency(transaction.amount)}
+                        color: trans.amount > 0 ? '#10b981' : '#ef4444'
+                      }}>
+                        {formatCurrency(trans.amount)}
                       </td>
-                      <td style={{ 
-                        padding: '0.75rem',
-                        fontSize: '0.85rem',
-                        maxWidth: '200px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',>
-                        {transaction.counterparty_name || transaction.received_from_or_paid_to || '—'}
+                      <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{trans.transaction_type}</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        {trans.contributor_name || trans.vendor_name || '—'}
                       </td>
-                      <td style={{ 
-                        padding: '0.75rem',
-                        color: '#6b7280',
-                        fontSize: '0.85rem',>
-                        {[transaction.transaction_city, transaction.transaction_state].filter(Boolean).join(', ') || '—'}
+                      <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>
+                        {trans.occupation || '—'}
+                      </td>
+                      <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>
+                        {trans.city && trans.state ? `${trans.city}, ${trans.state}` : '—'}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        ) : (
-          <div style={{
-            padding: '2rem',
-            textAlign: 'center',
-            backgroundColor: '#f9fafb',
-            border: '1px solid #e5e5e5',
-            borderRadius: '0.5rem',
-            color: '#6b7280',>
-            No transactions available for this entity.
+
+            {hasMoreTransactions && (
+              <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+                <button
+                  onClick={() => loadMoreTransactions()}
+                  disabled={loadingTransactions}
+                  style={{
+                    padding: '0.75rem 2rem',
+                    backgroundColor: '#2563eb',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    cursor: loadingTransactions ? 'not-allowed' : 'pointer',
+                    opacity: loadingTransactions ? 0.5 : 1
+                  }}
+                >
+                  {loadingTransactions ? 'Loading...' : 'Load More Transactions'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {transactions.length >= APP_CONFIG.TRANSACTION_PREVIEW_LIMIT && (
-          <div style={{
-            marginTop: '1rem',
-            padding: '1rem',
-            backgroundColor: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: '0.375rem',
-            fontSize: '0.9rem',
-            color: '#1e40af',>
-            <strong>Note:</strong> This shows only the {APP_CONFIG.TRANSACTION_PREVIEW_LIMIT} most recent transactions. 
-            Use the "Download All Transactions (CSV)" button above to get the complete dataset.
+        {/* Reports Tab */}
+        {activeTab === 'reports' && (
+          <div>
+            {/* Sub-tabs for Reports/Donations */}
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <button
+                onClick={() => setReportTab('reports')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: reportTab === 'reports' ? '#2563eb' : '#e5e5e5',
+                  color: reportTab === 'reports' ? 'white' : '#666',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Reports ({reports.length})
+              </button>
+              <button
+                onClick={() => setReportTab('donations')}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: reportTab === 'donations' ? '#2563eb' : '#e5e5e5',
+                  color: reportTab === 'donations' ? 'white' : '#666',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Donations ({summaryStats?.donation_count.toLocaleString() || 0})
+              </button>
+              
+              {/* Download dropdown */}
+              <div ref={dropdownRef} style={{ marginLeft: 'auto', position: 'relative' }}>
+                <button
+                  onClick={() => setDownloadMenuOpen(!downloadMenuOpen)}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    backgroundColor: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  📊 Download CSV ▼
+                </button>
+                {downloadMenuOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '0.25rem',
+                    backgroundColor: 'white',
+                    border: '1px solid #e5e5e5',
+                    borderRadius: '0.375rem',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                    zIndex: 10
+                  }}>
+                    <button
+                      onClick={() => {
+                        downloadReportsCSV();
+                        setDownloadMenuOpen(false);
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '0.5rem 1rem',
+                        textAlign: 'left',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      Download Reports CSV
+                    </button>
+                    <button
+                      onClick={() => {
+                        downloadDonationsCSV();
+                        setDownloadMenuOpen(false);
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: '0.5rem 1rem',
+                        textAlign: 'left',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem'
+                      }}
+                    >
+                      Download Donations CSV
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Reports View */}
+            {reportTab === 'reports' && (
+              <div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #e5e5e5' }}>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Report Name</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Filing Date</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Period</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'right' }}>Donations</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center' }}>Items</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center' }}>PDF</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'center' }}>CSV</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reports.map((report) => (
+                        <tr key={report.report_id} style={{ borderBottom: '1px solid #e5e5e5' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: '500' }}>{report.report_name}</td>
+                          <td style={{ padding: '0.75rem' }}>{formatDate(report.filing_date)}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{report.report_period}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#10b981' }}>
+                            {formatCurrency(report.total_income || report.total_donations || 0)}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {report.donation_count}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            {report.pdf_url ? (
+                              <a
+                                href={report.pdf_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#2563eb', textDecoration: 'none' }}
+                              >
+                                📄 View
+                              </a>
+                            ) : '—'}
+                          </td>
+                          <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                            <button
+                              onClick={() => downloadReportDonationsCSV(report.report_id, report.report_name)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#10b981',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                padding: 0
+                              }}
+                            >
+                              💾 Download
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Donations View */}
+            {reportTab === 'donations' && (
+              <div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #e5e5e5' }}>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Report</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Date</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'right' }}>Amount</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Donor</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Type</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Occupation</th>
+                        <th style={{ padding: '0.75rem', textAlign: 'left' }}>Location</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {donations.map((donation) => (
+                        <tr key={donation.donation_id} style={{ borderBottom: '1px solid #e5e5e5' }}>
+                          <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{donation.report_name}</td>
+                          <td style={{ padding: '0.75rem' }}>{formatDate(donation.donation_date)}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#10b981' }}>
+                            {formatCurrency(donation.amount)}
+                          </td>
+                          <td style={{ padding: '0.75rem' }}>{donation.donor_name}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>{donation.donor_type}</td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>
+                            {donation.occupation || '—'}
+                          </td>
+                          <td style={{ padding: '0.75rem', fontSize: '0.875rem' }}>
+                            {donation.address || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {hasMoreDonations && (
+                  <div style={{ textAlign: 'center', marginTop: '2rem' }}>
+                    <button
+                      onClick={() => loadMoreDonations()}
+                      disabled={loadingDonations}
+                      style={{
+                        padding: '0.75rem 2rem',
+                        backgroundColor: '#2563eb',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        cursor: loadingDonations ? 'not-allowed' : 'pointer',
+                        opacity: loadingDonations ? 0.5 : 1
+                      }}
+                    >
+                      {loadingDonations ? 'Loading...' : 'Load More Donations'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
-      </section>
+      </div>
     </div>
   );
 }

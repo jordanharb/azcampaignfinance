@@ -50,19 +50,21 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   
   return (
     <div>
-      <div style={{ marginBottom: '2rem'>
+      <div style={{ marginBottom: '2rem' }}>
         <h1 style={{
           fontSize: '2rem',
           fontWeight: '700',
           marginBottom: '0.5rem',
-          color: '#1f2937',>
+          color: '#1f2937',
+        }}>
           Search Campaign Finance Data
         </h1>
         <p style={{
           fontSize: '1rem',
           color: '#6b7280',
           marginBottom: '1.5rem',
-          maxWidth: '600px',>
+          maxWidth: '600px',
+        }}>
           Search for candidates, committees, and PACs to view their campaign finance reports and transactions.
         </p>
       </div>
@@ -76,8 +78,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           display: 'flex',
           gap: '0.75rem',
           flexWrap: 'wrap',
+        }}
       >
-        <div style={{ flex: '1', minWidth: '300px'>
+        <div style={{ flex: '1', minWidth: '300px' }}>
           <input 
             name="q" 
             defaultValue={query || ''} 
@@ -90,6 +93,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               borderRadius: '0.5rem',
               outline: 'none',
               transition: 'border-color 0.2s ease',
+            }}
           />
         </div>
         <button 
@@ -105,6 +109,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             cursor: 'pointer',
             transition: 'background-color 0.2s ease',
             whiteSpace: 'nowrap',
+          }}
         >
           Search
         </button>
@@ -112,7 +117,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
       {/* Results */}
       {query && (
-        <div style={{ marginBottom: '1rem'>
+        <div style={{ marginBottom: '1rem' }}>
           <div style={{
             fontSize: '0.9rem',
             color: '#6b7280',
@@ -120,7 +125,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: '0.5rem',>
+            gap: '0.5rem',
+          }}>
             <span>
               {results.length > 0 
                 ? `Showing ${results.length} results for "${query}"` 
@@ -128,7 +134,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               }
             </span>
             {results.length === APP_CONFIG.DEFAULT_SEARCH_LIMIT && (
-              <span style={{ fontStyle: 'italic'>
+              <span style={{ fontStyle: 'italic' }}>
                 Showing first {APP_CONFIG.DEFAULT_SEARCH_LIMIT} results
               </span>
             )}
@@ -142,22 +148,26 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           border: '1px solid #e5e5e5',
           borderRadius: '0.5rem',
           overflow: 'hidden',
-          backgroundColor: 'white',>
-          <div style={{ overflowX: 'auto'>
+          backgroundColor: 'white',
+        }}>
+          <div style={{ overflowX: 'auto' }}>
             <table style={{
               width: '100%',
               borderCollapse: 'collapse',
-              fontSize: '0.9rem',>
+              fontSize: '0.9rem',
+            }}>
               <thead>
                 <tr style={{
                   backgroundColor: '#f9fafb',
-                  borderBottom: '1px solid #e5e5e5',>
+                  borderBottom: '1px solid #e5e5e5',
+                }}>
                   <th style={{
                     padding: '1rem 0.75rem',
                     textAlign: 'left',
                     fontWeight: '600',
                     color: '#374151',
-                    minWidth: '200px',>
+                    minWidth: '200px',
+                  }}>
                     Name
                   </th>
                   <th style={{
@@ -165,7 +175,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     textAlign: 'left',
                     fontWeight: '600',
                     color: '#374151',
-                    minWidth: '100px',>
+                    minWidth: '100px',
+                  }}>
                     Party
                   </th>
                   <th style={{
@@ -173,7 +184,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     textAlign: 'left',
                     fontWeight: '600',
                     color: '#374151',
-                    minWidth: '120px',>
+                    minWidth: '120px',
+                  }}>
                     Office
                   </th>
                   <th style={{
@@ -181,7 +193,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     textAlign: 'left',
                     fontWeight: '600',
                     color: '#374151',
-                    minWidth: '110px',>
+                    minWidth: '110px',
+                  }}>
                     Last Activity
                   </th>
                   <th style={{
@@ -189,7 +202,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     textAlign: 'right',
                     fontWeight: '600',
                     color: '#374151',
-                    minWidth: '140px',>
+                    minWidth: '140px',
+                  }}>
                     Income / Expense
                   </th>
                   <th style={{
@@ -197,7 +211,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     textAlign: 'center',
                     fontWeight: '600',
                     color: '#374151',
-                    minWidth: '80px',>
+                    minWidth: '80px',
+                  }}>
                     Action
                   </th>
                 </tr>
@@ -209,26 +224,31 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                     style={{
                       borderBottom: '1px solid #f0f0f0',
                       transition: 'background-color 0.15s ease',
+                    }}
                   >
                     <td style={{
                       padding: '1rem 0.75rem',
                       fontWeight: '500',
-                      color: '#1f2937',>
+                      color: '#1f2937',
+                    }}>
                       {result.name}
                     </td>
                     <td style={{
                       padding: '1rem 0.75rem',
-                      color: '#4b5563',>
+                      color: '#4b5563',
+                    }}>
                       {result.party_name || '—'}
                     </td>
                     <td style={{
                       padding: '1rem 0.75rem',
-                      color: '#4b5563',>
+                      color: '#4b5563',
+                    }}>
                       {result.office_name || '—'}
                     </td>
                     <td style={{
                       padding: '1rem 0.75rem',
-                      color: '#4b5563',>
+                      color: '#4b5563',
+                    }}>
                       {formatDate(result.latest_activity)}
                     </td>
                     <td style={{
@@ -236,15 +256,17 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                       textAlign: 'right',
                       fontFamily: 'ui-monospace, Monaco, Consolas, monospace',
                       fontSize: '0.85rem',
-                      color: '#4b5563',>
+                      color: '#4b5563',
+                    }}>
                       <div>{formatCurrency(result.total_income)}</div>
-                      <div style={{ color: '#9ca3af', fontSize: '0.8rem'>
+                      <div style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
                         {formatCurrency(result.total_expense)}
                       </div>
                     </td>
                     <td style={{
                       padding: '1rem 0.75rem',
-                      textAlign: 'center',>
+                      textAlign: 'center',
+                    }}>
                       <a 
                         href={`/candidate/${result.entity_id}`}
                         style={{
@@ -258,6 +280,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                           borderRadius: '0.375rem',
                           textDecoration: 'none',
                           transition: 'all 0.15s ease',
+                        }}
                       >
                         View →
                       </a>
@@ -275,25 +298,29 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           padding: '3rem 1rem',
           border: '1px solid #e5e5e5',
           borderRadius: '0.5rem',
-          backgroundColor: '#fafbfc',>
+          backgroundColor: '#fafbfc',
+        }}>
           <div style={{
             fontSize: '2rem',
             marginBottom: '1rem',
-            filter: 'grayscale(1)',>
+            filter: 'grayscale(1)',
+          }}>
             🔍
           </div>
           <h3 style={{
             fontSize: '1.1rem',
             fontWeight: '600',
             color: '#374151',
-            marginBottom: '0.5rem',>
+            marginBottom: '0.5rem',
+          }}>
             No results found
           </h3>
           <p style={{
             color: '#6b7280',
             fontSize: '0.9rem',
             maxWidth: '400px',
-            margin: '0 auto',>
+            margin: '0 auto',
+          }}>
             Try searching for a candidate name, committee name, or use broader terms.
           </p>
         </div>
@@ -306,12 +333,14 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           padding: '2rem',
           backgroundColor: '#f0f9ff',
           border: '1px solid #e0f2fe',
-          borderRadius: '0.5rem',>
+          borderRadius: '0.5rem',
+        }}>
           <h3 style={{
             fontSize: '1.1rem',
             fontWeight: '600',
             color: '#0c4a6e',
-            marginBottom: '1rem',>
+            marginBottom: '1rem',
+          }}>
             How to search
           </h3>
           <ul style={{
@@ -319,14 +348,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             fontSize: '0.9rem',
             margin: 0,
             paddingLeft: '1.5rem',
-            lineHeight: '1.6',>
-            <li style={{ marginBottom: '0.5rem'>
+            lineHeight: '1.6',
+          }}>
+            <li style={{ marginBottom: '0.5rem' }}>
               Search by candidate name: "Katie Hobbs", "Kari Lake"
             </li>
-            <li style={{ marginBottom: '0.5rem'>
+            <li style={{ marginBottom: '0.5rem' }}>
               Search by office: "Governor", "Senate", "House"
             </li>
-            <li style={{ marginBottom: '0.5rem'>
+            <li style={{ marginBottom: '0.5rem' }}>
               Search by committee name or abbreviation
             </li>
             <li>

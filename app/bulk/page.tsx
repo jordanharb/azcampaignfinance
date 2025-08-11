@@ -55,16 +55,11 @@ export default function BulkExportPage() {
     setResult(null);
 
     try {
-      const ids = parseEntityIds(entityIds);
-      const filters: BulkExportRequest['filters'] = {};
-      
-      if (dateFrom) filters.date_from = dateFrom;
-      if (dateTo) filters.date_to = dateTo;
-
-      const payload: BulkExportRequest = {
-        kind: exportKind,
-        entity_ids: ids,
-        filters,
+      const request: BulkExportRequest = {
+        entity_ids: parseEntityIds(entityIds),
+        export_kind: exportKind,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
       };
 
       const response = await fetch('/api/bulk-export', {
@@ -72,26 +67,33 @@ export default function BulkExportPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(request),
       });
 
       const data = await response.json();
-
+      
       if (!response.ok) {
-        throw new Error(data.error || 'Export failed');
+        throw new Error(data.error || ERROR_MESSAGES.EXPORT_FAILED);
       }
 
       setResult(data);
     } catch (err) {
-      console.error('Bulk export error:', err);
+      console.error('Export error:', err);
       setError(err instanceof Error ? err.message : ERROR_MESSAGES.EXPORT_FAILED);
     } finally {
       setLoading(false);
     }
   }
 
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
   function handleReset() {
     setEntityIds('');
+    setExportKind('transactions');
     setDateFrom('');
     setDateTo('');
     setResult(null);
@@ -100,19 +102,21 @@ export default function BulkExportPage() {
 
   return (
     <div>
-      <div style={{ marginBottom: '2rem'>
+      <div style={{ marginBottom: '2rem' }}>
         <h1 style={{
           fontSize: '2rem',
           fontWeight: '700',
           marginBottom: '0.5rem',
-          color: '#1f2937',>
+          color: '#1f2937',
+        }}>
           Bulk Export
         </h1>
         <p style={{
           fontSize: '1rem',
           color: '#6b7280',
           marginBottom: '0',
-          maxWidth: '600px',>
+          maxWidth: '600px',
+        }}>
           Export data for multiple entities at once. The system will generate a CSV file and provide a download link.
         </p>
       </div>
@@ -122,10 +126,11 @@ export default function BulkExportPage() {
         backgroundColor: '#f9fafb',
         padding: '2rem',
         borderRadius: '0.5rem',
-        border: '1px solid #e5e7eb',>
+        border: '1px solid #e5e7eb',
+      }}>
         <form onSubmit={handleSubmit}>
           {/* Entity IDs Input */}
-          <div style={{ marginBottom: '1.5rem'>
+          <div style={{ marginBottom: '1.5rem' }}>
             <label 
               htmlFor="entityIds"
               style={{
@@ -134,35 +139,37 @@ export default function BulkExportPage() {
                 fontWeight: '600',
                 color: '#374151',
                 marginBottom: '0.5rem',
+              }}
             >
-              Entity IDs <span style={{ color: '#dc2626'>*</span>
+              Entity IDs <span style={{ color: '#dc2626' }}>*</span>
             </label>
             <textarea
               id="entityIds"
               value={entityIds}
               onChange={(e) => setEntityIds(e.target.value)}
+              placeholder="Enter entity IDs separated by commas or spaces (e.g., 100001, 100002, 100003)"
               rows={4}
-              placeholder="Enter entity IDs separated by commas or spaces. Example: 101502, 101817, 101475"
               style={{
                 width: '100%',
                 padding: '0.75rem',
                 fontSize: '0.9rem',
-                border: '2px solid #d1d5db',
+                border: '1px solid #d1d5db',
                 borderRadius: '0.375rem',
                 outline: 'none',
                 resize: 'vertical',
-                fontFamily: 'ui-monospace, Monaco, Consolas, monospace',
+              }}
             />
             <div style={{
               fontSize: '0.8rem',
               color: '#6b7280',
-              marginTop: '0.25rem',>
+              marginTop: '0.25rem',
+            }}>
               Maximum {APP_CONFIG.MAX_ENTITY_IDS} entity IDs per export
             </div>
           </div>
 
           {/* Export Type */}
-          <div style={{ marginBottom: '1.5rem'>
+          <div style={{ marginBottom: '1.5rem' }}>
             <label 
               htmlFor="exportKind"
               style={{
@@ -171,6 +178,7 @@ export default function BulkExportPage() {
                 fontWeight: '600',
                 color: '#374151',
                 marginBottom: '0.5rem',
+              }}
             >
               Export Type
             </label>
@@ -182,22 +190,25 @@ export default function BulkExportPage() {
                 width: '100%',
                 padding: '0.75rem',
                 fontSize: '0.9rem',
-                border: '2px solid #d1d5db',
+                border: '1px solid #d1d5db',
                 borderRadius: '0.375rem',
                 outline: 'none',
                 backgroundColor: 'white',
+                cursor: 'pointer',
+              }}
             >
               <option value="transactions">Transactions</option>
               <option value="reports">Reports</option>
             </select>
           </div>
 
-          {/* Date Range */}
+          {/* Date Range (Optional) */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: '1rem',
-            marginBottom: '1.5rem',>
+            marginBottom: '1.5rem',
+          }}>
             <div>
               <label 
                 htmlFor="dateFrom"
@@ -207,24 +218,25 @@ export default function BulkExportPage() {
                   fontWeight: '600',
                   color: '#374151',
                   marginBottom: '0.5rem',
+                }}
               >
                 From Date (Optional)
               </label>
               <input
-                id="dateFrom"
                 type="date"
+                id="dateFrom"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
                   fontSize: '0.9rem',
-                  border: '2px solid #d1d5db',
+                  border: '1px solid #d1d5db',
                   borderRadius: '0.375rem',
                   outline: 'none',
+                }}
               />
             </div>
-            
             <div>
               <label 
                 htmlFor="dateTo"
@@ -234,30 +246,33 @@ export default function BulkExportPage() {
                   fontWeight: '600',
                   color: '#374151',
                   marginBottom: '0.5rem',
+                }}
               >
                 To Date (Optional)
               </label>
               <input
-                id="dateTo"
                 type="date"
+                id="dateTo"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
                   fontSize: '0.9rem',
-                  border: '2px solid #d1d5db',
+                  border: '1px solid #d1d5db',
                   borderRadius: '0.375rem',
                   outline: 'none',
+                }}
               />
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Submit Button */}
           <div style={{
             display: 'flex',
             gap: '1rem',
-            alignItems: 'center',>
+            marginTop: '2rem',
+          }}>
             <button
               type="submit"
               disabled={loading}
@@ -268,18 +283,13 @@ export default function BulkExportPage() {
                 color: 'white',
                 backgroundColor: loading ? '#9ca3af' : '#0066cc',
                 border: 'none',
-                borderRadius: '0.5rem',
+                borderRadius: '0.375rem',
                 cursor: loading ? 'not-allowed' : 'pointer',
                 transition: 'background-color 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                if (!loading) {
-                  e.currentTarget.style.backgroundColor = '#0052a3';
-                }
-                if (!loading) {
-                  e.currentTarget.style.backgroundColor = '#0066cc';
-                }
+              }}
             >
               {loading ? (
                 <>
@@ -287,33 +297,33 @@ export default function BulkExportPage() {
                     display: 'inline-block',
                     width: '1rem',
                     height: '1rem',
-                    border: '2px solid transparent',
-                    borderTop: '2px solid currentColor',
+                    border: '2px solid #e5e7eb',
+                    borderTopColor: 'transparent',
                     borderRadius: '50%',
-                    animation: 'spin 1s linear infinite', />
-                  Preparing Export...
+                    animation: 'spin 0.6s linear infinite',
+                  }} />
+                  Processing...
                 </>
               ) : (
-                <>
-                  📊 Prepare Export
-                </>
+                <>📥 Generate Export</>
               )}
             </button>
-
+            
             {(result || error) && (
               <button
                 type="button"
                 onClick={handleReset}
                 style={{
                   padding: '0.75rem 1.5rem',
-                  fontSize: '0.9rem',
-                  fontWeight: '500',
-                  color: '#6b7280',
-                  backgroundColor: 'transparent',
+                  fontSize: '1rem',
+                  fontWeight: '600',
+                  color: '#4b5563',
+                  backgroundColor: 'white',
                   border: '1px solid #d1d5db',
                   borderRadius: '0.375rem',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease',
+                  transition: 'background-color 0.2s ease',
+                }}
               >
                 Reset Form
               </button>
@@ -321,84 +331,82 @@ export default function BulkExportPage() {
           </div>
         </form>
 
-        {/* Results */}
+        {/* Error Message */}
+        {error && (
+          <div style={{
+            marginTop: '1.5rem',
+            padding: '1rem',
+            backgroundColor: '#fee2e2',
+            border: '1px solid #fca5a5',
+            borderRadius: '0.375rem',
+            color: '#991b1b',
+            fontSize: '0.9rem',
+          }}>
+            <strong>Error:</strong> {error}
+          </div>
+        )}
+
+        {/* Success Result */}
         {result && (
           <div style={{
-            marginTop: '2rem',
+            marginTop: '1.5rem',
             padding: '1.5rem',
-            backgroundColor: '#f0f9ff',
-            border: '2px solid #0ea5e9',
-            borderRadius: '0.5rem',>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              marginBottom: '1rem',>
-              <span style={{ fontSize: '1.25rem'>✅</span>
-              <h3 style={{
-                fontSize: '1.1rem',
-                fontWeight: '600',
-                color: '#0c4a6e',
-                margin: 0,>
-                Export Ready!
-              </h3>
-            </div>
-            <p style={{
-              color: '#155e75',
+            backgroundColor: '#dcfce7',
+            border: '1px solid #86efac',
+            borderRadius: '0.375rem',
+          }}>
+            <h3 style={{
+              fontSize: '1.1rem',
+              fontWeight: '600',
+              color: '#166534',
               marginBottom: '1rem',
-              fontSize: '0.9rem',>
-              Your {exportKind} export has been generated successfully.
-            </p>
+            }}>
+              ✅ Export Complete!
+            </h3>
+            
+            <div style={{
+              display: 'grid',
+              gap: '0.75rem',
+              fontSize: '0.9rem',
+              color: '#166534',
+              marginBottom: '1rem',
+            }}>
+              <div>
+                <strong>File Name:</strong> {result.filename}
+              </div>
+              <div>
+                <strong>Size:</strong> {formatFileSize(result.size_bytes)}
+              </div>
+              <div>
+                <strong>Rows:</strong> {result.record_count.toLocaleString()}
+              </div>
+              <div>
+                <strong>Entities:</strong> {result.entity_count}
+              </div>
+              {result.cached && (
+                <div style={{ fontStyle: 'italic' }}>
+                  (Retrieved from cache)
+                </div>
+              )}
+            </div>
+
             <a
-              href={result.url}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={result.download_url}
+              download
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.5rem',
+                display: 'inline-block',
                 padding: '0.75rem 1.5rem',
-                fontSize: '0.95rem',
+                fontSize: '1rem',
                 fontWeight: '600',
                 color: 'white',
                 backgroundColor: '#16a34a',
                 textDecoration: 'none',
-                borderRadius: '0.5rem',
+                borderRadius: '0.375rem',
                 transition: 'background-color 0.2s ease',
+              }}
             >
-              📥 Download CSV File
+              💾 Download CSV
             </a>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div style={{
-            marginTop: '2rem',
-            padding: '1.5rem',
-            backgroundColor: '#fef2f2',
-            border: '2px solid #f87171',
-            borderRadius: '0.5rem',>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              marginBottom: '0.5rem',>
-              <span style={{ fontSize: '1.25rem'>❌</span>
-              <h3 style={{
-                fontSize: '1.1rem',
-                fontWeight: '600',
-                color: '#991b1b',
-                margin: 0,>
-                Export Failed
-              </h3>
-            </div>
-            <p style={{
-              color: '#b91c1c',
-              margin: 0,
-              fontSize: '0.9rem',>
-              {error}
-            </p>
           </div>
         )}
       </div>
@@ -406,43 +414,50 @@ export default function BulkExportPage() {
       {/* Help Section */}
       <div style={{
         marginTop: '3rem',
-        padding: '2rem',
-        backgroundColor: '#fffbeb',
-        border: '1px solid #fed7aa',
-        borderRadius: '0.5rem',>
+        maxWidth: '700px',
+        padding: '1.5rem',
+        backgroundColor: '#f0f9ff',
+        border: '1px solid #e0f2fe',
+        borderRadius: '0.5rem',
+      }}>
         <h3 style={{
           fontSize: '1.1rem',
           fontWeight: '600',
-          color: '#92400e',
-          marginBottom: '1rem',>
-          How to use bulk export
+          color: '#0c4a6e',
+          marginBottom: '1rem',
+        }}>
+          How to Use Bulk Export
         </h3>
-        <ul style={{
-          color: '#a16207',
+        <ol style={{
+          color: '#155e75',
           fontSize: '0.9rem',
-          margin: 0,
           paddingLeft: '1.5rem',
-          lineHeight: '1.6',>
-          <li style={{ marginBottom: '0.5rem'>
-            <strong>Entity IDs:</strong> You can find entity IDs in the search results or candidate pages
-          </li>
-          <li style={{ marginBottom: '0.5rem'>
-            <strong>Export Types:</strong> Choose "Reports" for filing documents or "Transactions" for detailed financial activity
-          </li>
-          <li style={{ marginBottom: '0.5rem'>
-            <strong>Date Filters:</strong> Optional - limit results to a specific time period
-          </li>
-          <li>
-            <strong>File Format:</strong> All exports are provided as CSV files for easy analysis in spreadsheet applications
-          </li>
-        </ul>
+          lineHeight: '1.8',
+        }}>
+          <li>Enter entity IDs separated by commas or spaces</li>
+          <li>Select whether you want to export Reports or Transactions</li>
+          <li>Optionally specify a date range to filter the data</li>
+          <li>Click Generate Export to create your CSV file</li>
+          <li>Download the file when ready</li>
+        </ol>
+        
+        <div style={{
+          marginTop: '1rem',
+          padding: '0.75rem',
+          backgroundColor: '#fef3c7',
+          border: '1px solid #fcd34d',
+          borderRadius: '0.375rem',
+          fontSize: '0.85rem',
+          color: '#92400e',
+        }}>
+          <strong>Note:</strong> Exports are cached for 15 minutes. If you request the same data within that time, 
+          you'll receive the cached version instantly.
+        </div>
       </div>
 
-      {/* Inline styles for spinner animation */}
       <style jsx>{`
         @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

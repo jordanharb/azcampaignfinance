@@ -71,6 +71,48 @@ export async function callRpc<T = any>(
 }
 
 /**
+ * Fetch data from a table with optional filters
+ */
+export async function fetchTable<T = any>(
+  table: string,
+  options: {
+    filter?: Record<string, any>;
+    limit?: number;
+    offset?: number;
+    orderBy?: string;
+  } = {}
+): Promise<T[]> {
+  const params = new URLSearchParams();
+  
+  // Add filters
+  if (options.filter) {
+    Object.entries(options.filter).forEach(([key, value]) => {
+      params.append(key, `eq.${value}`);
+    });
+  }
+  
+  // Add limit
+  if (options.limit) {
+    params.append('limit', options.limit.toString());
+  }
+  
+  // Add offset
+  if (options.offset) {
+    params.append('offset', options.offset.toString());
+  }
+  
+  // Add ordering
+  if (options.orderBy) {
+    params.append('order', options.orderBy);
+  }
+  
+  const queryString = params.toString();
+  const path = queryString ? `${table}?${queryString}` : table;
+  
+  return restJson<T[]>(path);
+}
+
+/**
  * Fetch CSV data from a REST endpoint
  * Returns raw response for streaming to client
  */

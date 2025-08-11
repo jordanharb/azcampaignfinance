@@ -1,0 +1,22 @@
+sector_code	sector_name
+00--01	Sector 00 - Cross-industry, Private, Federal, State, and Local Government
+11--12	Sector 11 - Agriculture, Forestry, Fishing and Hunting
+21--22	Sector 21 - Mining
+22--23	Sector 22 - Utilities
+23--24	Sector 23 - Construction
+31--34	Sectors 31, 32, and 33 - Manufacturing
+42--43	Sector 42 - Wholesale Trade
+44--46	Sectors 44 and 45 - Retail Trade
+48--50	Sectors 48 and 49 - Transportation and Warehousing
+51--52	Sector 51 - Information
+52--53	Sector 52 - Finance and Insurance
+53--54	Sector 53 - Real Estate and Rental and Leasing
+54--55	Sector 54 - Professional, Scientific, and Technical Services
+55--56	Sector 55 - Management of Companies and Enterprises
+56--57	Sector 56- Administrative and Support and Waste Management and Remediation Services
+61--62	Sector 61 - Educational Services
+62--63	Sector 62 - Health Care and Social Assistance
+71--72	Sector 71 - Arts, Entertainment, and Recreation
+72--73	Sector 72 - Accommodation and Food Services
+81--82	Sector 81 - Other Services (except Federal, State, and Local Government)
+99-100	Sector 99 - Federal, State, and Local Government (OEWS Designation)

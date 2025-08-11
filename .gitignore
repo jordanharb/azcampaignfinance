@@ -34,3 +34,29 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python virtual environment
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data files from scrapers
+campaign_finance_data/
+*.csv
+*.pdf
+scrapers/*.json
+scrapers/*.csv
+
+# R files
+.Rhistory
+.RData
+.Rproj.user/
+
+# Temporary files
+temp/
+tmp/
+*.tmp

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -6,7 +6,11 @@ export const metadata: Metadata = {
   description: 'Search and download campaign finance data from Arizona elections',
   keywords: 'Arizona, campaign finance, elections, candidates, committees, contributions, expenditures',
   authors: [{ name: 'Arizona Campaign Finance Explorer' }],
-  viewport: 'width=device-width, initial-scale=1',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({

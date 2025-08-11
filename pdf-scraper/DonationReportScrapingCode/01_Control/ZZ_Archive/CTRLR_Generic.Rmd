@@ -1,0 +1,216 @@
+---
+title: "GenericProgrammingController"
+output: 
+  html_document:
+    code_folding: "hide"
+---
+
+#Initialization
+##Load essential libraries
+```{r include=FALSE,warning=FALSE,message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(readxl)
+library(openxlsx)
+library(DataEditR)
+library(pdftools)
+library(tidyxl)
+```
+
+##Pathfinder
+```{r include=FALSE,warning=FALSE,message=FALSE}
+###Pathfinder function
+Pathfinder <- function(filesearch = "STDTXT.txt",searchlim = 3) {
+  RootFound <- FALSE
+  LoopCount <- 0
+  ProjPath <- getwd()
+  
+  while(!RootFound){
+    if(filesearch %in% dir(ProjPath)){
+    RootFound <- TRUE
+    break
+    } else if(LoopCount>searchlim){
+      ProjPath <- "***ERROR - File Not Found***"
+      break
+    }
+  ProjPath <- dirname(ProjPath)
+  LoopCount <- LoopCount + 1
+  }
+  return(ProjPath)
+}
+###
+
+###Standard project and module root selection
+ProjPath <- Pathfinder("ZZ_ProjectRoot.txt",10)
+y <- Pathfinder("Z_ModPkg.txt",3)
+if (y == ProjPath){
+ CurrMod_Ext <- ""
+} else {
+ CurrMod_Ext <- str_replace(y,paste0(ProjPath,.Platform$file.sep),"")
+}
+CurrMod_Name <- basename(y)
+
+rm(y)
+###
+
+###Initialization
+source(
+  file = file.path(
+    ProjPath,
+    CurrMod_Ext,
+    "01_Control",
+    "00_Init.R"
+  )
+)
+###
+
+###Running Python:
+#I have attempted to stabilize this function for use on multiple systems;
+#however, I will never be able to know exactly where Python is installed
+#so it will always be necessary to specify a path to reticulate
+# reticulate::use_python(
+#   file.path(
+#     dirname(path.expand(file.path("~"))),".pyenv","pyenv-win","versions",
+#     "3.11.1"
+#   )
+# )
+
+```
+
+##Core Functions
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+
+FUNCLIST <- c(
+  #Function Names
+  "_NONE_" ###Standard Start
+  ,
+  "ExcelDataIntake"
+  #End
+)
+
+```
+
+###Reset
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+
+FUNCLIST %>% {
+  
+  lst <- .
+  
+  #Remove Existing functions except for CORE
+  PROJ_FUNC$FUNC$CORE_hardReset()
+  #Add a selection of functions to the function list
+  PROJ_FUNC$FUNC$CORE_listInfo(
+    file.path(
+      ProjPath,
+      CurrMod_Ext,
+      "01_Control",
+      "01_FUNC"
+    ),
+    "\\.(r|R)$"
+  ) %>% mutate(
+    x = str_remove(files,"\\.[rR]$")
+  ) %>%
+  inner_join(
+    tibble(
+      x = lst
+    )
+  ) %>%
+  pwalk(.f=~PROJ_FUNC$FUNC$CORE_addFunc(..1))
+}
+```
+
+###Add New
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+
+FUNCLIST %>% {
+  lst <- .
+  #grab a selection of functions to the function list
+  tempfunctbl <- PROJ_FUNC$FUNC$CORE_listInfo(
+    file.path(
+      ProjPath,
+      CurrMod_Ext,
+      "01_Control",
+      "01_FUNC"
+    ),
+    "\\.(r|R)$"
+  ) %>% mutate(
+    x = str_remove(files,"\\.[rR]$")
+  ) %>%
+  inner_join(
+    tibble(
+      x = lst
+    )
+  )
+  
+  #remove old versions of matched function names
+  assign(
+    x = "PROJ_FUNC",
+    value = PROJ_FUNC %>% filter(
+      !(FUNC_NAME %in% c(
+        tempfunctbl %>% pull(files) %>% str_remove("\\.[rR]$")
+      )
+      )
+    ),
+    envir = .GlobalEnv
+  )
+  
+  #add new function definitions
+  pwalk(
+    .l = tempfunctbl,
+    .f=~PROJ_FUNC$FUNC$CORE_addFunc(..1)
+  )
+}
+
+```
+
+##Loading directories
+```{r echo=FALSE,warning=FALSE,message=FALSE}
+
+DataDir <- bind_rows(
+  #DDD Paid MMs
+  PROJ_FUNC$FUNC$CORE_listInfo(
+    InputPath =  file.path(
+      ProjPath,
+      CurrMod_Ext,
+      "01_Control",
+      "00_DATA",
+      "PROC_MainMM_01-PaidMMs",
+      "_00-Query_01-Results"
+    )
+  ) %>% mutate(
+    SegmentName = "MainMM",
+    MainDir = dirname(files_fullpath)
+  )
+)
+
+
+OutputDir <- file.path(
+  ProjPath,
+  CurrMod_Ext,
+  "02_Output",
+  "ALTCS-DD MMCombo"
+)
+
+pwalk(
+  .l = tibble(
+    x=c(
+      "OutputDir"
+    )
+  ),
+  .f = function(...){
+    lst <- list(...)
+    
+    if(!dir.exists(paths=eval(sym(lst$x)))){
+      dir.create(
+        path = eval(sym(lst$x))
+      )
+    } 
+  }
+)
+```
+
+#Main Process
+
+
+
