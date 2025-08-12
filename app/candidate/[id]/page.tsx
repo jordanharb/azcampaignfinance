@@ -232,6 +232,7 @@ export default function CandidatePage() {
     }
     
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId]);
 
   // Load more transactions

@@ -105,6 +105,15 @@ export interface ExportJob {
   error?: string;
 }
 
+export interface ExportResult {
+  filename: string;
+  size_bytes: number;
+  record_count: number;
+  entity_count: number;
+  url: string;
+  cached?: boolean;
+}
+
 export interface BulkExportRequest {
   kind: 'reports' | 'transactions';
   entity_ids: number[];

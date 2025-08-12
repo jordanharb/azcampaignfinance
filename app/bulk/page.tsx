@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BulkExportRequest, ExportJob } from '@/lib/types';
+import { BulkExportRequest, ExportJob, ExportResult } from '@/lib/types';
 import { APP_CONFIG, ERROR_MESSAGES } from '@/lib/constants';
 
 export default function BulkExportPage() {
@@ -10,7 +10,7 @@ export default function BulkExportPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ExportJob | null>(null);
+  const [result, setResult] = useState<ExportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function parseEntityIds(input: string): number[] {
@@ -56,10 +56,12 @@ export default function BulkExportPage() {
 
     try {
       const request: BulkExportRequest = {
+        kind: exportKind,
         entity_ids: parseEntityIds(entityIds),
-        export_kind: exportKind,
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
+        filters: {
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
+        },
       };
 
       const response = await fetch('/api/bulk-export', {
@@ -391,7 +393,7 @@ export default function BulkExportPage() {
             </div>
 
             <a
-              href={result.download_url}
+              href={result.url}
               download
               style={{
                 display: 'inline-block',
