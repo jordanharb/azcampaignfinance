@@ -163,6 +163,7 @@ export default function CandidatePage() {
   const [entity, setEntity] = useState<Entity | null>(null);
   const [primaryRecord, setPrimaryRecord] = useState<FinancialRecord | null>(null);
   const [summaryStats, setSummaryStats] = useState<SummaryStats | null>(null);
+  const [financialSummary, setFinancialSummary] = useState<any>(null);
   
   // Transactions state
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -218,6 +219,7 @@ export default function CandidatePage() {
         setEntity(data.entity);
         setPrimaryRecord(data.primaryRecord);
         setSummaryStats(data.summaryStats);
+        setFinancialSummary(data.financialSummary);
         setReports(data.reports);
         
         // Load initial transactions
@@ -462,17 +464,20 @@ export default function CandidatePage() {
           {primaryRecord?.office_name && (
             <div><strong>Office:</strong> {primaryRecord.office_name}</div>
           )}
-          {summaryStats && (
-            <div><strong>Total Raised:</strong> {formatCurrency(summaryStats.total_raised || summaryStats.total_contributions || 0)}</div>
+          {financialSummary && (
+            <>
+              <div><strong>Total Raised:</strong> {formatCurrency(financialSummary.total_raised || 0)}</div>
+              <div><strong>Total Spent:</strong> {formatCurrency(financialSummary.total_spent || 0)}</div>
+            </>
           )}
         </div>
         
-        {summaryStats && (
+        {financialSummary && (
           <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', fontSize: '0.875rem', color: '#666' }}>
-            <div>{summaryStats.transaction_count.toLocaleString()} transactions</div>
-            <div>{summaryStats.report_count} reports</div>
-            <div>{summaryStats.donation_count.toLocaleString()} donations</div>
-            <div>Activity: {formatDate(summaryStats.first_activity)} - {formatDate(summaryStats.last_activity)}</div>
+            <div>{financialSummary.transaction_count?.toLocaleString() || 0} transactions</div>
+            <div>{financialSummary.donation_count?.toLocaleString() || 0} contributions</div>
+            <div>{financialSummary.expense_count?.toLocaleString() || 0} expenses</div>
+            <div>Activity: {formatDate(financialSummary.earliest_transaction)} - {formatDate(financialSummary.latest_transaction)}</div>
           </div>
         )}
       </div>
