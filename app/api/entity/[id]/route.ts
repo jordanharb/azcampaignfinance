@@ -76,6 +76,54 @@ export async function GET(
       primaryRecord = records?.[0] || null;
     }
     
+    // Fetch financial summary from transactions directly
+    let financialSummary = null;
+    try {
+      // Try the function first
+      financialSummary = await supabaseRpc('get_entity_financial_summary', {
+        p_entity_id: parseInt(entityId)
+      });
+    } catch (error) {
+      // Fallback: calculate from transactions table directly
+      const transactions = await supabaseRequest('cf_transactions', {
+        'entity_id': `eq.${entityId}`,
+        'select': 'amount,transaction_type_disposition_id,transaction_date'
+      });
+      
+      if (transactions && transactions.length > 0) {
+        const summary = {
+          total_raised: 0,
+          total_spent: 0,
+          transaction_count: transactions.length,
+          donation_count: 0,
+          expense_count: 0,
+          earliest_transaction: null as string | null,
+          latest_transaction: null as string | null
+        };
+        
+        transactions.forEach((tx: any) => {
+          if (tx.transaction_type_disposition_id === 1) {
+            summary.total_raised += parseFloat(tx.amount) || 0;
+            summary.donation_count++;
+          } else if (tx.transaction_type_disposition_id === 2) {
+            summary.total_spent += parseFloat(tx.amount) || 0;
+            summary.expense_count++;
+          }
+          
+          if (tx.transaction_date) {
+            if (!summary.earliest_transaction || tx.transaction_date < summary.earliest_transaction) {
+              summary.earliest_transaction = tx.transaction_date;
+            }
+            if (!summary.latest_transaction || tx.transaction_date > summary.latest_transaction) {
+              summary.latest_transaction = tx.transaction_date;
+            }
+          }
+        });
+        
+        financialSummary = [summary];
+      }
+    }
+    
     // Fetch summary stats
     const stats = await supabaseRpc('get_entity_summary_stats', {
       p_entity_id: parseInt(entityId)
@@ -89,6 +137,7 @@ export async function GET(
     return NextResponse.json({
       entity,
       primaryRecord,
+      financialSummary: financialSummary?.[0] || null,
       summaryStats: stats?.[0] || null,
       reports: reports || []
     });
