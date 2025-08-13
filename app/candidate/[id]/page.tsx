@@ -23,6 +23,7 @@ interface Transaction {
   transaction_date: string;
   amount: number;
   transaction_type: string;
+  transaction_type_disposition_id?: number;
   contributor_name: string | null;
   vendor_name: string | null;
   occupation: string | null;
@@ -586,7 +587,7 @@ export default function CandidatePage() {
                       <td style={{ 
                         padding: '0.75rem', 
                         textAlign: 'right',
-                        color: trans.amount > 0 ? '#10b981' : '#ef4444'
+                        color: trans.transaction_type_disposition_id === 2 ? '#ef4444' : '#10b981'
                       }}>
                         {formatCurrency(trans.amount)}
                       </td>
